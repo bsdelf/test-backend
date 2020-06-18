@@ -23,23 +23,19 @@ const kdfV1 = (
   });
 };
 
-export interface PasswordHashResult {
+export interface HashedPassword {
   v: number;
   salt: string;
   hash: string;
 }
 
-type PasswordVerifyOptions = PasswordHashResult;
-
-export interface PasswordEncryptResult {
+export interface EncryptedData {
   v: number;
   salt: string;
   iv: string;
   tag: string;
   data: string;
 }
-
-type PasswordDecryptOptions = PasswordEncryptResult;
 
 class InvalidPasswordVersion extends Error {
   constructor(v: number) {
@@ -50,7 +46,7 @@ class InvalidPasswordVersion extends Error {
 export class Password {
   constructor(private password: string) {}
 
-  async hash(): Promise<PasswordHashResult> {
+  async hash(): Promise<HashedPassword> {
     // sha
     const sha256 = crypto.createHash('sha256');
     sha256.update(this.password);
@@ -61,8 +57,8 @@ export class Password {
     return { v: 1, salt: salt.toString('hex'), hash: hash.toString('hex') };
   }
 
-  async verify(options: PasswordVerifyOptions): Promise<boolean> {
-    if (options.v !== 1) {
+  async verify(input: HashedPassword): Promise<boolean> {
+    if (input.v !== 1) {
       throw new InvalidPasswordVersion(1);
     }
     // sha
@@ -70,13 +66,13 @@ export class Password {
     sha256.update(this.password);
     const digest = sha256.digest();
     // kdf
-    const salt = Buffer.from(options.salt, 'hex');
+    const salt = Buffer.from(input.salt, 'hex');
+    const expectedHash = Buffer.from(input.hash, 'hex');
     const actualHash = await kdfV1(digest, salt, 256);
-    const expectedHash = Buffer.from(options.hash, 'hex');
     return actualHash.equals(expectedHash);
   }
 
-  async encrypt(data: Buffer): Promise<PasswordEncryptResult> {
+  async encrypt(data: Buffer): Promise<EncryptedData> {
     const salt = randomBits(128);
     const key = await kdfV1(this.password, salt, 256);
     const iv = randomBits(256);
@@ -92,14 +88,14 @@ export class Password {
     };
   }
 
-  async decrypt(options: PasswordDecryptOptions): Promise<Buffer> {
-    if (options.v !== 1) {
+  async decrypt(input: EncryptedData): Promise<Buffer> {
+    if (input.v !== 1) {
       throw new InvalidPasswordVersion(1);
     }
-    const salt = Buffer.from(options.salt, 'hex');
-    const iv = Buffer.from(options.iv, 'hex');
-    const tag = Buffer.from(options.tag, 'hex');
-    const encrypted = Buffer.from(options.data, 'hex');
+    const salt = Buffer.from(input.salt, 'hex');
+    const iv = Buffer.from(input.iv, 'hex');
+    const tag = Buffer.from(input.tag, 'hex');
+    const encrypted = Buffer.from(input.data, 'hex');
     const key = await kdfV1(this.password, salt, 256);
     const aes = crypto.createDecipheriv('aes-256-gcm', key, iv).setAuthTag(tag);
     return Buffer.concat([aes.update(encrypted), aes.final()]);
