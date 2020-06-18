@@ -73,8 +73,10 @@ export class Password {
   }
 
   async encrypt(data: Buffer): Promise<EncryptedData> {
+    // kdf
     const salt = randomBits(128);
     const key = await kdfV1(this.password, salt, 256);
+    // aes
     const iv = randomBits(256);
     const aes = crypto.createCipheriv('aes-256-gcm', key, iv);
     const encrypted = Buffer.concat([aes.update(data), aes.final()]);
@@ -92,11 +94,13 @@ export class Password {
     if (input.v !== 1) {
       throw new InvalidPasswordVersion(1);
     }
+    // kdf
     const salt = Buffer.from(input.salt, 'hex');
+    const key = await kdfV1(this.password, salt, 256);
+    // aes
     const iv = Buffer.from(input.iv, 'hex');
     const tag = Buffer.from(input.tag, 'hex');
     const encrypted = Buffer.from(input.data, 'hex');
-    const key = await kdfV1(this.password, salt, 256);
     const aes = crypto.createDecipheriv('aes-256-gcm', key, iv).setAuthTag(tag);
     return Buffer.concat([aes.update(encrypted), aes.final()]);
   }
